@@ -1,0 +1,654 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>WorldView</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E">
+  <link href="https://unpkg.com/cesium/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+
+  <style>
+    html, body, #cesiumContainer {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      background: #000;
+    }
+
+    #topBar {
+      position: absolute;
+      left: 12px;
+      top: 12px;
+      z-index: 10;
+      max-width: 440px;
+      padding: 12px;
+      border-radius: 14px;
+      color: #fff;
+      background: rgba(10, 10, 10, 0.68);
+      backdrop-filter: blur(8px);
+      box-shadow: 0 12px 30px rgba(0,0,0,0.35);
+    }
+
+    #title {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    #subtitle {
+      font-size: 12px;
+      opacity: 0.9;
+      margin-bottom: 10px;
+      line-height: 1.4;
+    }
+
+    .row {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-top: 6px;
+    }
+
+    .btn {
+      appearance: none;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.08);
+      color: #fff;
+      border-radius: 10px;
+      padding: 7px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: transform .08s ease, background .12s ease;
+    }
+
+    .btn:hover { background: rgba(255,255,255,0.14); }
+    .btn:active { transform: translateY(1px); }
+
+    .toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.08);
+      font-size: 12px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .toggle input { accent-color: #9ad7ff; }
+
+    #status {
+      margin-top: 10px;
+      font-size: 12px;
+      color: #d7d7d7;
+      line-height: 1.45;
+    }
+
+    #log {
+      margin-top: 8px;
+      max-height: 160px;
+      overflow: auto;
+      white-space: pre-wrap;
+      font-size: 11px;
+      color: #cfd8e3;
+      padding-right: 4px;
+    }
+
+    #legend {
+      margin-top: 8px;
+      font-size: 11px;
+      color: #c7c7c7;
+      line-height: 1.45;
+    }
+
+    #videoBox {
+      position: absolute;
+      right: 12px;
+      bottom: 12px;
+      z-index: 10;
+      width: 320px;
+      border-radius: 14px;
+      overflow: hidden;
+      background: rgba(0,0,0,0.55);
+      padding: 8px;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.35);
+    }
+
+    #videoBox .caption {
+      color: #fff;
+      font-size: 12px;
+      margin-bottom: 6px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    #videoBox video {
+      width: 100%;
+      display: block;
+      border-radius: 10px;
+      background: #111;
+    }
+
+    .overlay {
+      pointer-events: none;
+      position: absolute;
+      inset: 0;
+      z-index: 5;
+    }
+
+    #crt {
+      display: none;
+      background:
+        repeating-linear-gradient(
+          to bottom,
+          rgba(255,255,255,0.03),
+          rgba(255,255,255,0.03) 1px,
+          transparent 1px,
+          transparent 3px
+        );
+      mix-blend-mode: overlay;
+      opacity: 0.18;
+    }
+
+    #vignette {
+      display: none;
+      background: radial-gradient(ellipse at center, rgba(0,0,0,0) 40%, rgba(0,0,0,0.42) 100%);
+    }
+
+    #grain {
+      display: none;
+      background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><filter id="n"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch"/></filter><rect width="64" height="64" filter="url(%23n)" opacity="0.15"/></svg>');
+      background-repeat: repeat;
+      opacity: 0.05;
+      mix-blend-mode: screen;
+    }
+
+    .night .cesium-viewer {
+      filter: hue-rotate(85deg) saturate(1.8) contrast(1.1) brightness(0.92);
+    }
+
+    .flir .cesium-viewer {
+      filter: contrast(1.45) saturate(0.25) brightness(0.72) invert(0.32) hue-rotate(205deg);
+    }
+
+    .small-note {
+      margin-top: 8px;
+      font-size: 11px;
+      opacity: 0.85;
+    }
+
+    a, a:visited {
+      color: #9ad7ff;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="cesiumContainer"></div>
+
+  <div id="topBar">
+    <div id="title">WorldView — Production</div>
+    <div id="subtitle">
+      Live public feeds, Earth imagery, orbit tracks, aircraft, earthquakes, and a camera demo. The aircraft feed comes from the same-origin <code>/opensky</code> endpoint.
+    </div>
+
+    <div class="row">
+      <button id="toggleSat" class="btn">Toggle Satellites</button>
+      <button id="togglePlanes" class="btn">Toggle Aircraft</button>
+      <button id="toggleQuakes" class="btn">Toggle Quakes</button>
+      <button id="focusIss" class="btn">Fly to ISS</button>
+    </div>
+
+    <div class="row">
+      <label class="toggle"><input id="crtToggle" type="checkbox"> CRT</label>
+      <label class="toggle"><input id="nvToggle" type="checkbox"> Night Vision</label>
+      <label class="toggle"><input id="flirToggle" type="checkbox"> FLIR</label>
+    </div>
+
+    <div id="status">Starting…</div>
+    <div id="log"></div>
+    <div id="legend">
+      Sources: CelesTrak TLEs, USGS earthquakes, OpenSky proxy, OpenStreetMap tiles.
+    </div>
+    <div class="small-note">
+      Tip: use a custom domain later for production branding.
+    </div>
+  </div>
+
+  <div id="crt" class="overlay"></div>
+  <div id="grain" class="overlay"></div>
+  <div id="vignette" class="overlay"></div>
+
+  <div id="videoBox">
+    <div class="caption">
+      <span>Demo camera</span>
+      <span style="opacity:0.7;">public sample</span>
+    </div>
+    <video id="camVideo" autoplay muted loop playsinline crossorigin="anonymous">
+      <source src="https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4" type="video/mp4">
+    </video>
+  </div>
+
+  <script src="https://unpkg.com/satellite.js/dist/satellite.min.js"></script>
+  <script src="https://unpkg.com/cesium/Build/Cesium/Cesium.js"></script>
+
+  <script>
+    (() => {
+      const logEl = document.getElementById('log');
+      const statusEl = document.getElementById('status');
+
+      const log = (msg) => {
+        console.log(msg);
+        const ts = new Date().toLocaleTimeString();
+        logEl.textContent = `${ts} — ${msg}\n` + logEl.textContent;
+      };
+
+      const setStatus = (msg) => {
+        statusEl.textContent = msg;
+      };
+
+      // Keep the app fully free: no Cesium Ion token, no Ion terrain.
+      const viewer = new Cesium.Viewer('cesiumContainer', {
+        baseLayerPicker: false,
+        geocoder: false,
+        timeline: false,
+        animation: false,
+        sceneModePicker: true,
+        homeButton: true,
+        navigationHelpButton: false,
+        selectionIndicator: true,
+        terrainProvider: new Cesium.EllipsoidTerrainProvider()
+      });
+
+      // Explicit Earth imagery, no Ion dependency.
+      viewer.imageryLayers.removeAll();
+      viewer.imageryLayers.addImageryProvider(
+        new Cesium.UrlTemplateImageryProvider({
+          url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+          credit: '© OpenStreetMap contributors'
+        })
+      );
+
+      viewer.scene.globe.baseColor = Cesium.Color.BLACK;
+      viewer.scene.globe.enableLighting = true;
+      viewer.scene.globe.depthTestAgainstTerrain = false;
+      viewer.scene.skyAtmosphere.show = false;
+      viewer.scene.fog.enabled = false;
+      viewer.scene.backgroundColor = Cesium.Color.BLACK;
+
+      // State
+      let planeEntities = {};
+      let quakeEntities = [];
+      let satEntities = [];
+
+      let planesVisible = true;
+      let quakesVisible = true;
+      let satsVisible = true;
+
+      // Helpers
+      function createPlaneIcon() {
+        const c = document.createElement('canvas');
+        c.width = 64;
+        c.height = 64;
+        const ctx = c.getContext('2d');
+        ctx.clearRect(0, 0, 64, 64);
+        ctx.save();
+        ctx.translate(32, 32);
+        ctx.fillStyle = '#ffcc33';
+        ctx.beginPath();
+        ctx.moveTo(0, -18);
+        ctx.lineTo(6, 6);
+        ctx.lineTo(0, 2);
+        ctx.lineTo(-6, 6);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+        return c.toDataURL();
+      }
+
+      function createQuakeIcon(color, size) {
+        const c = document.createElement('canvas');
+        c.width = size;
+        c.height = size;
+        const ctx = c.getContext('2d');
+        const grad = ctx.createRadialGradient(size / 2, size / 2, 1, size / 2, size / 2, size / 2);
+        grad.addColorStop(0, color.toCssColorString ? color.toCssColorString() : '#ff0000');
+        grad.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, size, size);
+        return c.toDataURL();
+      }
+
+      function removeEntitiesByMap(mapObj) {
+        Object.values(mapObj).forEach(ent => {
+          try { if (ent) viewer.entities.remove(ent); } catch (_) {}
+        });
+      }
+
+      function removeEntityArray(arr) {
+        arr.forEach(ent => {
+          try { if (ent) viewer.entities.remove(ent); } catch (_) {}
+        });
+      }
+
+      function createCameraOverlay() {
+        const video = document.getElementById('camVideo');
+        try {
+          const west = -0.2, south = 51.49, east = -0.18, north = 51.5;
+          const rect = viewer.entities.add({
+            name: 'demo-camera',
+            rectangle: {
+              coordinates: Cesium.Rectangle.fromDegrees(west, south, east, north),
+              material: new Cesium.ImageMaterialProperty({
+                image: video,
+                transparent: true,
+                repeat: new Cesium.Cartesian2(1.0, 1.0)
+              })
+            }
+          });
+          rect.rectangle.material.image = video;
+          log('Demo camera overlay added.');
+        } catch (e) {
+          log('Camera overlay failed: ' + String(e));
+        }
+      }
+
+      async function loadPlanes() {
+        try {
+          log('Fetching aircraft states…');
+          const resp = await fetch('/opensky', { cache: 'no-store' });
+          if (!resp.ok) throw new Error('OpenSky returned ' + resp.status);
+
+          const j = await resp.json();
+
+          removeEntitiesByMap(planeEntities);
+          planeEntities = {};
+
+          const states = Array.isArray(j.states) ? j.states : [];
+          states.slice(0, 120).forEach(s => {
+            const icao = s[0] || ('icao-' + Math.random().toString(36).slice(2, 6));
+            const callsign = (s[1] || '').trim() || icao;
+            const lon = s[5];
+            const lat = s[6];
+            const alt = s[7];
+
+            if (typeof lon === 'number' && typeof lat === 'number') {
+              const id = 'plane-' + icao;
+              const ent = viewer.entities.add({
+                id,
+                position: Cesium.Cartesian3.fromDegrees(lon, lat, alt || 10000),
+                billboard: { image: createPlaneIcon(), scale: 0.7 },
+                label: {
+                  text: callsign,
+                  font: '11px sans-serif',
+                  style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+                  outlineColor: Cesium.Color.BLACK,
+                  pixelOffset: new Cesium.Cartesian2(12, -12)
+                }
+              });
+              planeEntities[id] = ent;
+            }
+          });
+
+          Object.values(planeEntities).forEach(e => e.show = planesVisible);
+          setStatus(`Earth imagery loaded. Aircraft: ${Object.keys(planeEntities).length}`);
+          log('Aircraft loaded.');
+        } catch (err) {
+          log('OpenSky unavailable; using simulated aircraft. ' + String(err));
+
+          removeEntitiesByMap(planeEntities);
+          planeEntities = {};
+
+          const nowKey = Date.now();
+          const sims = [
+            { id: 'sim-' + nowKey + '-1', callsign: 'SIM101', lon: -74.0, lat: 40.7, alt: 9000 },
+            { id: 'sim-' + nowKey + '-2', callsign: 'SIM202', lon: 2.35, lat: 48.85, alt: 11000 },
+            { id: 'sim-' + nowKey + '-3', callsign: 'SIM303', lon: 77.2, lat: 28.6, alt: 8000 }
+          ];
+
+          sims.forEach(s => {
+            const ent = viewer.entities.add({
+              id: s.id,
+              position: Cesium.Cartesian3.fromDegrees(s.lon, s.lat, s.alt),
+              billboard: { image: createPlaneIcon(), scale: 0.9 },
+              label: {
+                text: s.callsign,
+                font: '11px sans-serif',
+                pixelOffset: new Cesium.Cartesian2(12, -12)
+              }
+            });
+            planeEntities[s.id] = ent;
+          });
+
+          Object.values(planeEntities).forEach(e => e.show = planesVisible);
+          setStatus(`Earth imagery loaded. Aircraft: simulated fallback`);
+        }
+      }
+
+      async function loadQuakes() {
+        try {
+          log('Fetching USGS recent earthquakes…');
+          const r = await fetch('https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson', { cache: 'no-store' });
+          if (!r.ok) throw new Error('USGS returned ' + r.status);
+
+          const j = await r.json();
+
+          removeEntityArray(quakeEntities);
+          quakeEntities = [];
+
+          const features = Array.isArray(j.features) ? j.features : [];
+          features.forEach(f => {
+            try {
+              const coords = f?.geometry?.coordinates;
+              const mag = f?.properties?.mag ?? 0;
+              if (!coords || coords.length < 2) return;
+
+              const color = mag >= 3 ? Cesium.Color.RED : mag >= 1.5 ? Cesium.Color.ORANGE : Cesium.Color.YELLOW;
+              const id = f.id || ('q-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6));
+
+              if (viewer.entities.getById(id)) return;
+
+              const ent = viewer.entities.add({
+                id,
+                position: Cesium.Cartesian3.fromDegrees(coords[0], coords[1], 0),
+                billboard: {
+                  image: createQuakeIcon(color, Math.max(8, 4 + mag * 4)),
+                  verticalOrigin: Cesium.VerticalOrigin.BOTTOM
+                },
+                label: {
+                  text: `M${mag} • ${(f?.properties?.place || '')}`,
+                  font: '11px sans-serif',
+                  pixelOffset: new Cesium.Cartesian2(12, -12)
+                }
+              });
+
+              quakeEntities.push(ent);
+            } catch (_) {}
+          });
+
+          quakeEntities.forEach(e => e.show = quakesVisible);
+          log(`Quakes plotted: ${quakeEntities.length}`);
+        } catch (err) {
+          log('USGS fetch failed: ' + String(err));
+        }
+      }
+
+      async function loadSatellites() {
+        try {
+          log('Fetching TLEs from CelesTrak…');
+          const res = await fetch('https://celestrak.org/NORAD/elements/visual.txt', { cache: 'no-store' });
+          if (!res.ok) throw new Error('CelesTrak returned ' + res.status);
+
+          const txt = await res.text();
+          const lines = txt.split('\n').map(l => l.replace(/\r/g, '').trim()).filter(Boolean);
+
+          const triples = [];
+          for (let i = 0; i < lines.length - 2; i++) {
+            if (!lines[i].startsWith('1 ') && lines[i + 1].startsWith('1 ') && lines[i + 2].startsWith('2 ')) {
+              triples.push([lines[i], lines[i + 1], lines[i + 2]]);
+              i += 2;
+            }
+          }
+
+          removeEntityArray(satEntities);
+          satEntities = [];
+
+          if (!triples.length) {
+            log('No TLEs found; skipping satellites.');
+            return;
+          }
+
+          triples.slice(0, 14).forEach(([name, l1, l2]) => {
+            try {
+              const satrec = satellite.twoline2satrec(l1, l2);
+
+              const ent = viewer.entities.add({
+                name,
+                position: new Cesium.CallbackProperty((time) => {
+                  try {
+                    const jsDate = Cesium.JulianDate.toDate(time);
+                    const gmst = satellite.gstime(jsDate);
+                    const eci = satellite.propagate(satrec, jsDate);
+                    if (!eci || !eci.position) return null;
+
+                    const geo = satellite.eciToGeodetic(eci.position, gmst);
+                    const lon = satellite.degreesLong(geo.longitude);
+                    const lat = satellite.degreesLat(geo.latitude);
+
+                    return Cesium.Cartesian3.fromDegrees(
+                      lon,
+                      lat,
+                      Math.max(200000, Math.abs(eci.position.z || 400000))
+                    );
+                  } catch (_) {
+                    return null;
+                  }
+                }, false),
+                point: { pixelSize: 8, color: Cesium.Color.YELLOW },
+                label: {
+                  text: name,
+                  font: '12px monospace',
+                  show: false,
+                  pixelOffset: new Cesium.Cartesian2(12, -12)
+                }
+              });
+
+              satEntities.push(ent);
+            } catch (e) {
+              console.warn('sat error', e);
+            }
+          });
+
+          satEntities.forEach(e => e.show = satsVisible);
+          log(`Satellites added: ${satEntities.length}`);
+        } catch (err) {
+          log('TLE fetch failed: ' + String(err));
+        }
+      }
+
+      function flyToIss() {
+        const iss = satEntities.find(s => s.name && s.name.toLowerCase().includes('iss'));
+        if (!iss) {
+          alert('ISS not present yet — wait for satellites to load.');
+          return;
+        }
+        const pos = iss.position.getValue(Cesium.JulianDate.now());
+        if (pos) {
+          viewer.camera.flyTo({
+            destination: pos,
+            duration: 1.5
+          });
+        }
+      }
+
+      // UI
+      document.getElementById('toggleSat').onclick = () => {
+        satsVisible = !satsVisible;
+        satEntities.forEach(e => e.show = satsVisible);
+        document.getElementById('toggleSat').textContent = satsVisible ? 'Toggle Satellites' : 'Satellites (off)';
+      };
+
+      document.getElementById('togglePlanes').onclick = () => {
+        planesVisible = !planesVisible;
+        Object.values(planeEntities).forEach(e => e.show = planesVisible);
+        document.getElementById('togglePlanes').textContent = planesVisible ? 'Toggle Aircraft' : 'Aircraft (off)';
+      };
+
+      document.getElementById('toggleQuakes').onclick = () => {
+        quakesVisible = !quakesVisible;
+        quakeEntities.forEach(e => e.show = quakesVisible);
+        document.getElementById('toggleQuakes').textContent = quakesVisible ? 'Toggle Quakes' : 'Quakes (off)';
+      };
+
+      document.getElementById('focusIss').onclick = flyToIss;
+
+      document.getElementById('crtToggle').onchange = (e) => {
+        document.getElementById('crt').style.display = e.target.checked ? 'block' : 'none';
+        document.getElementById('grain').style.display = e.target.checked ? 'block' : 'none';
+        document.getElementById('vignette').style.display = e.target.checked ? 'block' : 'none';
+      };
+
+      document.getElementById('nvToggle').onchange = (e) => {
+        document.body.classList.toggle('night', e.target.checked);
+      };
+
+      document.getElementById('flirToggle').onchange = (e) => {
+        document.body.classList.toggle('flir', e.target.checked);
+      };
+
+      // Keep refreshes from overlapping.
+      let openSkyBusy = false;
+      let quakesBusy = false;
+
+      async function refreshPlanes() {
+        if (openSkyBusy) return;
+        openSkyBusy = true;
+        try { await loadPlanes(); } finally { openSkyBusy = false; }
+      }
+
+      async function refreshQuakes() {
+        if (quakesBusy) return;
+        quakesBusy = true;
+        try { await loadQuakes(); } finally { quakesBusy = false; }
+      }
+
+      async function init() {
+        try {
+          setStatus('Loading Earth imagery…');
+          await Promise.all([loadSatellites(), loadPlanes(), loadQuakes()]);
+          createCameraOverlay();
+
+          viewer.clock.multiplier = 1;
+          viewer.clock.shouldAnimate = true;
+
+          setStatus('Production build ready.');
+          log('WorldView started.');
+          setInterval(refreshPlanes, 15000);
+          setInterval(refreshQuakes, 60000);
+        } catch (err) {
+          setStatus('Started with partial data.');
+          log('Startup error: ' + String(err));
+        }
+      }
+
+      // Entity picking
+      const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+      handler.setInputAction((click) => {
+        const picked = viewer.scene.pick(click.position);
+        if (Cesium.defined(picked) && picked.id) {
+          viewer.selectedEntity = picked.id;
+        }
+      }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+
+      init();
+    })();
+  </script>
+</body>
+</html>
